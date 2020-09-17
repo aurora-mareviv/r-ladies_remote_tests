@@ -1,0 +1,544 @@
+---
+title: "Resumen de los datos"
+author: "Aurora Baluja"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: false
+    theme: united
+    highlight: tango
+editor_options: 
+  chunk_output_type: console
+---
+
+<!-- This notebook can only be executed via sumby.R -->
+
+# An&aacute;lisis descriptivo 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(error = TRUE, collapse = TRUE, echo=FALSE, message = FALSE, warning = FALSE, comment="  ", dpi = 300)
+options(scipen=999, "digits"=2)
+```
+
+```{r install, echo=FALSE, results='hide'} 
+list.of.packages <- c(
+  "tidyverse" 
+  # "GGally", "plyr", "abind", "knitr", "DT", "scales", "reshape", "tidyr", "gplots", "webshot"
+  )
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages, repos='https://cran.rstudio.com/')
+```
+
+```{r libraries, echo=FALSE, results='hide'}  
+library(tidyverse) 
+```  
+
+```{r fun_colors}
+source("./rscripts/colors.R", echo=FALSE)
+```
+
+```{r fun_cleanUTFchar}
+source("./rscripts/cleanUTFchar.R", echo=FALSE)
+# cleanUTFchar()
+```
+
+```{r fun_fix_asciii}
+source("./rscripts/fix_asciii.R", echo=FALSE, encoding = "UTF-8")
+```
+
+```{r fun_number detector}
+source("./rscripts/number_detector.R", echo=FALSE)
+```
+
+```{r fun_kabler_tabler}
+source("./rscripts/kabler_tabler.R", echo=FALSE)
+# kabler() # formats with striped html table
+```
+
+```{r fun_FDR_penal}
+source("./rscripts/fdr_penal.R", echo=FALSE)
+# penalisation()
+```
+
+Importamos la base de datos original. NA's = valores ausentes:  
+
+```{r import_data_sumby, echo=FALSE}  
+# import data from a folder (it scoops objects from sumby.R)
+wdir <- getwd() 
+if (file.exists(ruta) == TRUE){
+  load(ruta)
+  data.name <- sub("(.*\\/)([^.]+)(\\.[[:alnum:]]+$)", "\\2", ruta)
+  mydata <- get(data.name)
+  datos <- deparse(substitute(mydata))
+}else{
+  # or...pseudo-import data that already exists into R (like 'cars')
+  data.name <- datos
+  mydata <- get(datos)
+  datos <- deparse(substitute(mydata))
+}
+
+# define and name the column to split the analysis by
+if (is.null(fac_by)){ 
+  myfactor <- "no existe factor de ajuste"
+}else{
+  fact_by <- mydata[, fac_by] 
+  fact_by <- as.factor(fact_by[[1]])
+  myfactor <- fac_by
+}
+
+info <- sessionInfo() 
+```  
+
+- Base de datos: **`r data.name`**   
+
+- Frecuencias ajustadas por: **`r fac_by`**   
+
+- `r info$R.version[c(13, 2)]` 
+
+<!---- Transformamos a factor las variables con < o 3 niveles: ----> 
+```{r data_variables_to_factor}  
+# Transformamos a factor las variables con < o 3 niveles:  
+sep <- function(x){  
+  if(length(levels(as.factor(x))) <= 4){  
+    x <- as.factor(x)  
+  }  
+  x  
+}  
+
+dat <- as_tibble( lapply(mydata, sep) )
+```  
+
+<!-- ## Table functions -->
+```{r fun_table1_printer}
+source("./rscripts/table1_printer.R", echo=FALSE)
+# table1_printer(
+#   mydata,
+#   char_vars = NULL,
+#   num_vars = NULL,
+#   char_names = NULL,
+#   num_names = NULL
+#   dictionary = NULL
+# )
+```
+
+```{r fun_table1_by_fac_printer}
+# source("./rscripts/table1_by_fac_printer.R", echo=FALSE)
+source("./rscripts/table1_by_fac_printer_no_pvalue.R", echo=FALSE)
+# table1_by_fac_printer(
+#   mydata,
+#   grouping,
+#   char_vars = NULL,
+#   num_vars = NULL,
+#   char_names = NULL,
+#   num_names = NULL
+# )
+```
+
+<!-- ## Patient characteristics -->
+```{r table1a1_variables, eval=TRUE}
+# group variables by type
+tablefac01 <- dat %>%
+  select_if(
+    is.factor
+    # is.character
+  ) %>% names()
+tablefac02 <- dat %>%
+  select_if(
+    # is.factor
+    is.character
+  ) %>% names()
+tablefac0 <- c( tablefac01, tablefac02 )
+  
+    
+tablenum0 <- dat %>%
+  select_if(
+    is.numeric
+  ) %>% names()
+
+# reorder vars vector to match pretty names' order
+tablefac <- dict_vars %>%
+  # filter(vars_clean %in% tablefac0) %>%
+  filter(covars %in% tablefac0) %>%
+  # collect %>% .[["vars_clean"]]
+  collect %>% .[["covars"]]
+# Using dictionary to get pretty names:
+names_mydata_fac <- dictionarier(tablefac, remove_if_empty=FALSE)
+tablefac <- tablefac0 # overwrite as we'll not be using dictionaries
+
+# reorder vars vector to match pretty names' order
+tablenum <- dict_vars %>%
+  # filter(vars_clean %in% tablenum0) %>%
+  filter(covars %in% tablenum0) %>%
+  # collect %>% .[["vars_clean"]]
+  collect %>% .[["covars"]]
+# Using dictionary to get pretty names:
+names_mydata_num <- dictionarier(tablenum, remove_if_empty=FALSE)
+tablenum <- tablenum0 # overwrite as we'll not be using dictionaries
+```
+
+```{r table_plots, echo=FALSE, results='hide', eval=TRUE, include=FALSE}  
+# print mini plots, hide results to avoid verbose plots in output!  
+if (is.null(fac_by)){  
+  for(i in tablenum0) {  
+    # i <- "edad"
+    png(paste(plotdir, "/rplot_", i, ".png", sep = ""), width=800, height=600)  
+    
+    print(
+      dat %>% select(!!i) %>%
+        ggplot(
+          aes_string(
+            x = i
+          )
+        )  +
+        geom_histogram(aes(fill = ..count..), color="gray60"
+                       # , binwidth = 1
+                       ) +
+        # scale_fill_gradientn(colours = terrain.colors(20)) +
+        # scale_fill_gradient2(low="grey", mid="darkgrey", high="#F17022") +
+        scale_fill_gradient2(low="#00324d", mid="#0074b3", high="#4dc1ff") + # blues
+        theme_bw() +
+        # theme(panel.background = element_rect(fill = "gray30")) +
+        # theme(panel.grid.major = element_line(colour = "gray90")) + 
+        # theme(panel.grid.minor = element_line(colour = "gray50")) +
+        ggtitle(paste0( "Histograma de ", names(dat)[names(dat)==i] )) +
+        xlab(paste0( names(dat)[names(dat)==i] ))  +
+        ylab("Frecuencia") 
+    ) 
+    dev.off()  
+    pdf(paste(plotdir, "/rplot_", i, ".pdf", sep = ""), width=800, height=600)  
+    
+    print(
+      dat %>% select(!!i) %>%
+        ggplot(
+          aes_string(
+            x = i
+          )
+        )  +
+        geom_histogram(aes(fill = ..count..), color="gray60"
+                       # , binwidth = 1
+                       ) +
+        # scale_fill_gradientn(colours = terrain.colors(20)) +
+        # scale_fill_gradient2(low="grey", mid="darkgrey", high="#F17022") +
+        scale_fill_gradient2(low="#00324d", mid="#0074b3", high="#4dc1ff") + # blues
+        theme_bw() +
+        # theme(panel.background = element_rect(fill = "gray30")) +
+        # theme(panel.grid.major = element_line(colour = "gray90")) + 
+        # theme(panel.grid.minor = element_line(colour = "gray50")) +
+        ggtitle(paste0( "Histograma de ", names(dat)[names(dat)==i] )) +
+        xlab(paste0( names(dat)[names(dat)==i] ))  +
+        ylab("Frecuencia") 
+    ) 
+    dev.off()  
+  }
+  
+}else{
+  cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
+  for(i in tablenum0) {  
+    #~~~~~ Plots undivided by factor
+    png(paste(plotdir, "/rplot_", i, ".png", sep = ""), width=800, height=600)  
+    print(
+      dat %>% select(!!i) %>%
+        ggplot(
+          aes_string(
+            x = i
+          )
+          
+        )  +
+        geom_histogram(aes(fill = ..count..), color="gray60"
+                       # , binwidth = 1
+                       ) +
+        # scale_fill_gradientn(colours = terrain.colors(20)) +
+        # scale_fill_gradient2(low="grey", mid="darkgrey", high="#F17022") +
+        scale_fill_gradient2(low="#00324d", mid="#0074b3", high="#4dc1ff") + # blues
+        theme_bw() +
+        # theme(panel.background = element_rect(fill = "gray30")) +
+        # theme(panel.grid.major = element_line(colour = "gray90")) + 
+        # theme(panel.grid.minor = element_line(colour = "gray50")) +
+        ggtitle(paste0( "Histograma de ", names(dat)[names(dat)==i] )) +
+        xlab(paste0( names(dat)[names(dat)==i] ))  +
+        ylab("Frecuencia") 
+    ) 
+    dev.off()  
+    #~~~~~ Plots divided by factor
+    png(paste(plotdir, "/rplot_", i, "_by_", fac_by, ".png", sep = ""), width=800, height=600)  
+    print(
+      dat %>% select(!!i) %>%
+        ggplot(
+          aes_string(
+            x = i
+          )
+        )  +
+        # geom_histogram(alpha = 0.7,
+        #                aes(y = ..count.., group=fact_by, colour=fact_by, fill=fact_by),
+        #                position = 'identity', binwidth=1) + # histogram
+        # geom_histogram(alpha = 0.7,
+        #                aes(y = ..count.., group=fact_by, colour=fact_by, fill=fact_by),
+        #                binwidth=1) + # stacked histogram
+        geom_density(alpha = 0.7, 
+                     aes(group=fact_by, y = ..density.., colour=fact_by, fill=fact_by), 
+                     position = 'identity') + # density plots 
+        # scale_fill_brewer(palette = "Spectral") + 
+        scale_color_manual(guide = FALSE, values=cbPalette) +
+        scale_fill_manual(values=cbPalette) +
+        theme_bw() + 
+        ggtitle(paste("Gráfico de densidad de ", i, sep="")) + 
+        guides(fill=guide_legend(title=fac_by)) + 
+        xlab(paste(i)) + 
+        ylab("Densidad") 
+    ) 
+    dev.off()  
+  }  
+}  
+
+# write column with paths to mini-plots. if there's dividing factor, there will be two sets of plots: undivided and divided  
+if( is.null(fac_by) ){
+  #~~~~~ Plots undivided by factor
+  Miniplot0 <- sapply( tablenum0,   
+                       function(x) paste0('<img src="', plotdir, '/rplot_', x, '.png" width="70" height="50"></img>') )  
+  
+  #~~~~~ Plots divided by factor
+  Miniplot_by0 <- character( length(tablenum0) )
+}else{
+  #~~~~~ Plots undivided by factor
+  Miniplot0 <- sapply( tablenum0,   
+                       function(x) paste0('<img src="', plotdir, '/rplot_', x, '.png" width="70" height="50"></img>') )  
+  #~~~~~ Plots divided by factor
+  Miniplot_by0 <- sapply( tablenum0,   
+                       function(x) paste0('<img src="', plotdir, '/rplot_', x, '_by_', fac_by, '.png" width="70" height="50"></img>') )  
+}
+Miniplot <- as_tibble(Miniplot0) %>% 
+    rename(plot = value) %>%
+    mutate(
+      variable = tablenum0
+    )
+Miniplot_by <- as_tibble(Miniplot_by0) %>% 
+    rename(plot = value) %>%
+    mutate(
+      variable = tablenum0
+    )
+
+```  
+
+```{r table1a1_print, eval=TRUE}
+# creates table 1
+table1a_print <- table1_printer(
+  data = mydata,
+  char_vars = tablefac,
+  num_vars = tablenum,
+  # char_names = names_mydata_fac,
+  # num_names = names_mydata_num,
+  dictionary = NULL
+  # dictionary = dict_vars
+)
+media_pat_characteristics <- "1a"
+
+table1a_print$formatted_plot <- table1a_print$formatted %>%
+  full_join(Miniplot) %>%
+  mutate(
+    plot = case_when(
+      is.na(plot) ~ "",
+      !is.na(plot) ~ plot
+    )
+  )
+```
+
+```{r table1a1_save, eval=TRUE}
+dataname <- paste0("Table", media_pat_characteristics, "_patient_characteristics")  # name we will give to file
+# # save table to XLSX
+routexl <- paste(outdir, "/", dataname, ".xlsx", sep="")   # complete route to future archive
+try(
+  table1a_print$formatted %>%
+    mutate_all(
+      funs(
+        gsub(pattern="&#60;", replacement="<", .)
+      )
+    ) %>%
+    xlsx::write.xlsx(routexl) # creates archive in specified route
+)
+```
+
+
+<!-- ## Patient characteristics by factor1 -->
+```{r table1b_variables, eval=TRUE}
+# group variables by type
+group_var <- fac_by
+# var <- sym("n_inten") # stop experimenting with quosures aure
+# grouping <- c(quo(sym("n_inten"))) # stop already please
+
+# group variables by type
+tablefac01 <- dat %>%
+  select_if(
+    is.factor
+    # is.character
+  ) %>% names()
+tablefac02 <- dat %>%
+  select_if(
+    # is.factor
+    is.character
+  ) %>% names()
+tablefac00 <- c( tablefac01, tablefac02 )
+tablefac0 <- tablefac00[tablefac00 != fac_by]
+
+tablenum00 <- dat %>%
+  select_if(
+    is.numeric
+  ) %>% names()
+tablenum0 <- tablenum00[tablenum00 != fac_by]
+
+# reorder vars vector to match pretty names' order
+tablefac <- dict_vars %>%
+  # filter(vars_clean %in% tablefac0) %>%
+  filter(covars %in% tablefac0) %>%
+  # collect %>% .[["vars_clean"]]
+  collect %>% .[["covars"]]
+# Using dictionary to get pretty names:
+names_mydata_fac <- dictionarier(tablefac, remove_if_empty=FALSE)
+tablefac <- c(tablefac, group_var) # add grouping variable
+names_mydata_fac <- c(names_mydata_fac, group_var) # add grouping variable
+tablefac <- tablefac0 # overwrite as we'll not be using dictionaries
+tablefac <- c(tablefac, group_var) # add grouping variable
+
+# reorder vars vector to match pretty names' order
+tablenum <- dict_vars %>%
+  # filter(vars_clean %in% tablenum0) %>%
+  filter(covars %in% tablenum0) %>%
+  # collect %>% .[["vars_clean"]]
+  collect %>% .[["covars"]]
+# Using dictionary to get pretty names:
+names_mydata_num <- dictionarier(tablenum, remove_if_empty=FALSE)
+tablenum <- c(tablenum, group_var) # add grouping variable
+names_mydata_num <- c(names_mydata_num, group_var) # add grouping variable
+tablenum <- tablenum0 # overwrite as we'll not be using dictionaries
+tablenum <- c(tablenum, group_var) # add grouping variable
+
+```
+
+```{r table1b_print, eval=TRUE}
+# creates table 1
+# data = mydata
+# group_var = group_var
+# char_vars = tablefac
+# num_vars = tablenum
+# char_names = names_mydata_fac
+# num_names = names_mydata_num
+# paired = FALSE
+# penalised = TRUE
+# dictionary = dict_vars
+
+if( is.null(fac_by)){
+  message("")
+  table1b_print <- "No existe la tabla."
+  table1b_kabler <- ""
+  media_pat_characteristics_by_fac1b <- "1b"
+}else{
+  table1b_print <- table1_by_fac_printer(
+    data = mydata,
+    # data = dat,
+    group_var = group_var,
+    char_vars = tablefac,
+    num_vars = tablenum,
+    # char_names = names_mydata_fac,
+    # num_names = names_mydata_num,
+    paired = FALSE,
+    penalised = TRUE,
+    dictionary = NULL
+    # dictionary = dict_vars
+  )
+  table1b_print$formatted_plot <- table1b_print$formatted %>%
+  full_join(Miniplot_by) %>%
+  mutate(
+    plot = case_when(
+      is.na(plot) ~ "",
+      !is.na(plot) ~ plot
+    )
+  )
+  
+  media_pat_characteristics_by_fac1b <- "1b"
+  dataname <- paste0("Table", media_pat_characteristics_by_fac1b, "_patient_characteristics_by_", group_var)  # name we will give to file
+  # # save table to XLSX
+  routexl <- paste(outdir, "/", dataname, ".xlsx", sep="")   # complete route to future archive
+  try(
+    table1b_print$formatted %>%
+      mutate_all(
+        funs(
+          gsub(pattern="&#60;", replacement="<", .)
+        )
+      ) %>%
+      xlsx::write.xlsx(routexl) # creates archive in specified route
+  )
+  table1b_kabler <- 
+    table1b_print$formatted_plot %>%
+    # table1b_print$formatted %>%
+    kabler()
+}
+```
+
+
+
+
+<!-- ## Frases   -->
+```{r frase_numeric_adj_byfac, results='asis'}  
+if (is.null(fac_by)){ 
+  frase_num <- paste("")
+  frase_plot <- paste(" - Se muestra asimismo el histograma de la variable.")
+  resumen_by_fac_titulo <- ""
+}else{
+  frase_num <- paste(" - Se muestra un resumen de las mismas ajustado por los niveles del factor: ", "**", fac_by, "**", sep="")
+  frase_plot <- paste(" - Asimismo se muestra un diagrama de densidad de la variable para cada nivel del factor ", "**", fac_by, "**", sep="")
+  resumen_by_fac_titulo <- paste0("### Resumen dividido por " , fac_by)
+}
+```
+
+
+
+
+## Resumen   
+
+A continuaci&oacute;n se ofrece un resumen de las variables num&eacute;ricas de la base de datos:  
+
+`r frase_num`
+
+`r frase_plot`
+
+
+### Resumen General
+
+```{r table1a1_display}
+# table1a_final <- table1a_print$formatted %>%
+#   pander::pander()
+
+# table1a_print$formatted %>% 
+table1a_print$formatted_plot %>%
+  kabler()
+```
+
+`r resumen_by_fac_titulo`
+
+```{r table1b_display}
+# table1b_final <- table1b_print$formatted %>%
+#   pander::pander()
+table1b_kabler
+```
+
+
+
+
+
+
+
+
+
+<br>
+<br> 
+<br> 
+An&aacute;lisis autom&aacute;tico de datos - v.4
+
+[Hecho artesanalmente con R Markdown](http://rmarkdown.rstudio.com/)  
+Aurora Baluja Gonz&aacute;lez   
+correo-e: [mariauror@gmail.com](mariauror@gmail.com)   
+<!-- web: [Tales of R](https://talesofr.wordpress.com/)   -->
+ 
+<br> 
